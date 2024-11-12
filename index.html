@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fébooupas</title>
+
+    <!-- Styles CSS intégrés -->
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: linear-gradient(to right, #4facfe, #00f2fe);
+            color: #333;
+        }
+
+        .container {
+            text-align: center;
+            background: #fff;
+            padding: 2.5rem;
+            border-radius: 15px;
+            box-shadow: 0px 10px 30px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 500px;
+            transition: all 0.3s ease-in-out;
+        }
+
+        .container.wide {
+            max-width: 700px;
+        }
+
+        .container:hover {
+            transform: scale(1.05);
+        }
+
+        h1 {
+            font-size: 32px;
+            margin-bottom: 1.5rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .search input {
+            padding: 0.8rem;
+            font-size: 18px;
+            width: 70%;
+            border: 2px solid #ccc;
+            border-radius: 25px;
+            outline: none;
+            margin-right: 10px;
+            transition: all 0.3s;
+        }
+
+        .search input:focus {
+            border-color: #00a8fe;
+            box-shadow: 0 0 10px rgba(0, 170, 255, 0.5);
+        }
+
+        .search button {
+            padding: 0.8rem 1.5rem;
+            font-size: 18px;
+            background-color: #4facfe;
+            color: #fff;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.3s;
+        }
+
+        .search button:hover {
+            background-color: #00a8fe;
+            transform: translateY(-3px);
+        }
+
+        .weather-info {
+            margin-top: 2rem;
+            font-size: 18px;
+            line-height: 1.5;
+            color: #333;
+        }
+
+        .error-message {
+            color: red;
+            margin-top: 1rem;
+            font-weight: bold;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .map {
+            margin-top: 2rem;
+            height: 300px;
+            width: 100%;
+            border-radius: 15px;
+            transition: all 0.3s ease-in-out;
+        }
+
+        .map.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        .map:not(.hidden) {
+            opacity: 1;
+            visibility: visible;
+        }
+    </style>
+
+    <!-- Leaflet CSS pour la carte -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>Fébooupas</h1>
+        <div class="search">
+            <input type="text" id="city" placeholder="Entrez une ville">
+            <button onclick="fetchWeather()">Rechercher</button>
+        </div>
+
+        <div id="weather-info" class="weather-info hidden">
+            <h2 id="city-name"></h2>
+            <p id="temperature"></p>
+            <p id="description"></p>
+        </div>
+
+        <div id="berlin-weather" class="weather-info">
+            <h2>Berlin</h2>
+            <p id="berlin-temperature"></p>
+            <p id="berlin-description"></p>
+        </div>
+
+        <div id="toulouse-weather" class="weather-info">
+            <h2>Toulouse</h2>
+            <p id="toulouse-temperature"></p>
+            <p id="toulouse-description"></p>
+        </div>
+
+        <p id="error-message" class="error-message hidden"></p>
+
+        <!-- Conteneur pour la carte -->
+        <div id="map" class="map hidden"></div>
+    </div>
+
+    <!-- Leaflet JS pour la carte -->
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script>
+        // API pour géolocalisation et météo
+        const weatherAPIBase = "https://api.open-meteo.com/v1/forecast";
+        const geoAPIBase = "https://nominatim.openstreetmap.org/search";
+
+        let map;
+
+        function initializeMap(lat, lon) {
+            // Si la carte existe déjà, ne pas la recréer
+            if (!map) {
+                map = L.map('map').setView([lat, lon], 10);
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', {
+                    attribution: '&copy; OpenStreetMap contributors, &copy; CartoDB',
+                    maxZoom: 18
+                }).addTo(map);
+            } else {
+                map.setView([lat, lon], 10);  // Mettre à jour la vue de la carte
+            }
+
+            // Ajouter un marqueur
+            L.marker([lat, lon]).addTo(map);
+
+            document.getElementById("map").classList.remove("hidden");
+
+            // Recalculer la taille de la carte après son affichage (important si la carte ne se charge pas)
+            map.invalidateSize();
+        }
+
+        async function fetchWeatherForCity(city, weatherElementPrefix) {
+            try {
+                const geoResponse = await fetch(`${geoAPIBase}?q=${city}&format=json`);
+                const geoData = await geoResponse.json();
+                if (geoData.length === 0) {
+                    throw new Error("Ville non trouvée");
+                }
+
+                const { lat, lon, display_name } = geoData[0];
+
+                const weatherResponse = await fetch(`${weatherAPIBase}?latitude=${lat}&longitude=${lon}&current_weather=true`);
+                const weatherData = await weatherResponse.json();
+
+                const temperature = weatherData.current_weather.temperature;
+                const windspeed = weatherData.current_weather.windspeed;
+
+                document.getElementById(`${weatherElementPrefix}-temperature`).textContent = `Température : ${temperature}°C`;
+                document.getElementById(`${weatherElementPrefix}-description`).textContent = `Vent : ${windspeed} km/h`;
+
+                // Initialiser ou mettre à jour la carte
+                initializeMap(lat, lon);
+
+            } catch (error) {
+                document.getElementById("error-message").textContent = error.message;
+                document.getElementById("error-message").classList.remove("hidden");
+            }
+        }
+
+        // Charger automatiquement les informations pour Berlin et Toulouse
+        fetchWeatherForCity("Berlin", "berlin");
+        fetchWeatherForCity("Toulouse", "toulouse");
+
+        async function fetchWeather() {
+            const city = document.getElementById("city").value;
+            const weatherInfo = document.getElementById("weather-info");
+            const errorMessage = document.getElementById("error-message");
+
+            weatherInfo.classList.add("hidden");
+            errorMessage.classList.add("hidden");
+
+            if (city === "") {
+                errorMessage.textContent = "Veuillez entrer une ville.";
+                errorMessage.classList.remove("hidden");
+                return;
+            }
+
+            try {
+                const geoResponse = await fetch(`${geoAPIBase}?q=${city}&format=json`);
+                const geoData = await geoResponse.json();
+                if (geoData.length === 0) {
+                    throw new Error("Ville non trouvée");
+                }
+
+                const { lat, lon, display_name } = geoData[0];
+
+                const weatherResponse = await fetch(`${weatherAPIBase}?latitude=${lat}&longitude=${lon}&current_weather=true`);
+                const weatherData = await weatherResponse.json();
+
+                const temperature = weatherData.current_weather.temperature;
+                const windspeed = weatherData.current_weather.windspeed;
+
+                document.getElementById("city-name").textContent = display_name;
+                document.getElementById("temperature").textContent = `Température : ${temperature}°C`;
+                document.getElementById("description").textContent = `Vent : ${windspeed} km/h`;
+
+                weatherInfo.classList.remove("hidden");
+                document.querySelector('.container').classList.add('wide');
+
+                // Initialiser ou mettre à jour la carte
+                initializeMap(lat, lon);
+
+            } catch (error) {
+                errorMessage.textContent = error.message;
+                errorMessage.classList.remove("hidden");
+            }
+        }
+    </script>
+
+</body>
+
+</html>
